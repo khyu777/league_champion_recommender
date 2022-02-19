@@ -2,9 +2,10 @@ from riotwatcher import LolWatcher, ApiError
 import pandas as pd
 import time
 from tqdm import tqdm
+from constants import ACCESS_TOKEN
 
 # define region / set up lolwatcher
-lol_watcher = LolWatcher('RGAPI-87b30441-30de-4c7e-a7ca-c38df34c451e')
+lol_watcher = LolWatcher(ACCESS_TOKEN)
 platform = ['br1', 'eun1', 'euw1', 'jp1', 'kr', 'la1', 'la2', 'na1', 'oc1', 'tr1', 'ru']
 while True:
     my_region = input('Region: (i.e. na1, kr): ')

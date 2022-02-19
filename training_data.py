@@ -5,8 +5,9 @@ from collections import defaultdict
 import time
 from tqdm import tqdm
 from datetime import datetime
+from constants import ACCESS_TOKEN
 
-lol_watcher = LolWatcher('RGAPI-87b30441-30de-4c7e-a7ca-c38df34c451e')
+lol_watcher = LolWatcher(ACCESS_TOKEN)
 my_region = 'na1'
 
 # Champion base stat
