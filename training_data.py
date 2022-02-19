@@ -31,7 +31,7 @@ summoner_list = [summoner['summonerId'] for summoner in lol_watcher.league.chall
 
 ## get puuid for each summoner
 summoner_list_puuid = []
-for summoner_id in tqdm(summoner_list, bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'):
+for summoner_id in tqdm(summoner_list[:1], bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'):
     try:
         puuid = lol_watcher.summoner.by_id(my_region, summoner_id)['puuid']
         summoner_list_puuid.append(puuid)
@@ -92,6 +92,7 @@ for match in tqdm(matches, bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'):
             for key, value in participant.items():
                 match_participants[key].append(value)
         df = pd.DataFrame(match_participants)
+        df.drop(df.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
         df['championName'] = df['championName'].str.lower()
         df = pd.merge(df, champ_stats_df.reset_index().rename(columns = {'index':'championName'}), 'left', on = 'championName')
         df['n'] = df.groupby('win').cumcount()

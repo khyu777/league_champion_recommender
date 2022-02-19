@@ -3,6 +3,8 @@ import pandas as pd
 import time
 from tqdm import tqdm
 from constants import ACCESS_TOKEN
+import os
+import glob
 
 # define region / set up lolwatcher
 lol_watcher = LolWatcher(ACCESS_TOKEN)
@@ -81,14 +83,15 @@ elif analysis_type == 'n':
 print(', '.join(summoner_ids.values()))
 
 player_stats = []
-regions = ['americas', 'asia', 'europe']
-while True:
-    region = input('Region for stats (i.e. americas, asia): ')
-    if region not in regions:
-        print('not a valid region. please enter again')
-        continue
-    else:
-        break
+americas = ['br1', 'la1', 'la2', 'na1']
+asia = ['jp1', 'kr', 'oc1', 'tr1', 'ru']
+europe = ['eun1', 'euw1']
+if my_region in americas:
+    region = 'americas'
+elif my_region in asia:
+    region = 'asia'
+elif my_region in europe:
+    region = 'europe'
 for id, name in tqdm(summoner_ids.items(), bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'):
     while True:
         try:
@@ -180,7 +183,9 @@ from sklearn.model_selection import train_test_split
 import xgboost as xgb
 
 # Import training dataset
-training_dataset = pd.read_csv('training_dataset.csv')
+path = os.getcwd() + '\\dataset'
+filenames = [i for i in glob.glob(os.path.join(path, '*.csv'))]
+training_dataset = pd.concat([pd.read_csv(f) for f in filenames])
 
 ## split into train/test
 x_train, x_test, y_train, y_test = train_test_split(
