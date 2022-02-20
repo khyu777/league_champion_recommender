@@ -5,6 +5,7 @@ from tqdm import tqdm
 from constants import ACCESS_TOKEN
 import os
 import glob
+import sys
 
 # define region / set up lolwatcher
 lol_watcher = LolWatcher(ACCESS_TOKEN)
@@ -35,59 +36,14 @@ champ_stats_df = pd.DataFrame.from_dict(champ_stats, orient = 'index')
 champ_stats_df.index.str.lower()
 champ_stats_df.head()
 
+print('Please paste content from champion select chat:')
+summoner_names = [summoner.replace(' joined the lobby', '') for summoner in sys.stdin.read().split('\n')]
+summoner_names.remove('')
 summoner_ids = {}
-analysis_type = input('Before champion selection? (Y/N) ').lower()
-if analysis_type == 'y':
-    for i in range(1,6):
-        while True:
-            try:
-                summoner = input(f'Summoner {i}: ')
-                summoner_ids[lol_watcher.summoner.by_name(my_region, summoner)['puuid']] = summoner
-            except ApiError as err:
-                print(err.response.status_code)
-                if err.response.status_code == 429:
-                    print('Too many requests!! Waiting 2 minutes...')
-                    time.sleep(120)
-                if err.response.status_code == 404:
-                    print('Summoner not found')
-            else:
-                break
-elif analysis_type == 'n':
-    while True:
-        try:
-            summoner_name = input('Summoner Name: ')
-            summoner_id = lol_watcher.summoner.by_name(my_region, summoner_name)['id']
-            summoners = lol_watcher.spectator.by_summoner(my_region, summoner_id)['participants']
-        except ApiError as err:
-            if err.response.status_code == 404:
-                print('Summoner not in game, please try again')
-        else:
-            break
-    team_choice = input('Ally/Enemy team? (A/E) ')
-    teamIds = [100, 200]
-    curr_teamIds = {summoner['summonerName']:summoner['teamId'] for summoner in summoners}
-    curr_champIds = []
-    if team_choice.lower() == 'a':
-        teamId = curr_teamIds[summoner_name]
-    elif team_choice.lower() == 'e':
-        teamIds.remove(curr_teamIds[summoner_name])
-        teamId = teamIds[0]
-    for summoner in summoners:
-        if summoner['teamId'] == teamId:
-            while True:
-                try:
-                    summoner_ids[lol_watcher.summoner.by_name(my_region, summoner['summonerName'])['puuid']] = summoner['summonerName']
-                    curr_champIds.append(summoner['championId'])
-                except ApiError as err:
-                    print(err.response.status_code)
-                    if err.response.status_code == 429:
-                        print('Too many requests!! Waiting 2 minutes...')
-                        time.sleep(120)
-                    if err.response.status_code == 404:
-                        print('Summoner not found')
-                else:
-                    break
-print(', '.join(summoner_ids.values()))
+for summoner in summoner_names:
+    print(summoner)
+    summoner_ids[lol_watcher.summoner.by_name(my_region, summoner)['puuid']] = summoner
+my_summoner_name = input('Your summoner name: ')
 
 player_stats = []
 americas = ['br1', 'la1', 'la2', 'na1']
@@ -143,9 +99,9 @@ player_combined = player_stats_df_summary.join(champ_stats_df)
 player_combined = player_combined.reset_index().rename(columns={'index':'championName'})
 player_combined.summonerName.unique()
 
-if analysis_type == 'y':
-    champion_selection = []
-    for summoner in summoner_ids.values():
+champion_selection = []
+for summoner in summoner_ids.values():
+    if summoner != my_summoner_name:
         while True:
             champion_selection_input = input(f"{summoner}'s champion: ")
             if champion_selection_input not in champ_stats_df.index.str.lower():
@@ -154,8 +110,6 @@ if analysis_type == 'y':
             else:
                 break
         champion_selection.append(champion_selection_input)
-elif analysis_type == 'n':
-    champion_selection = [champ_keys[champId].lower() for champId in curr_champIds]
 
 while True:
     print(', '.join(champion_selection))
@@ -168,11 +122,15 @@ while True:
     elif champion_fix.lower() == 'n':
         break
 
+# stats for all champs for my summoner
+champions = pd.DataFrame({'championName':champ_stats_df.index.str.lower()})
+my_summoner_stats_all = pd.merge(champions, player_combined[player_combined['summonerName']==my_summoner_name], 'left', on = 'championName')
+my_summoner_stats_all = my_summoner_stats_all.drop(columns=['win', 'count', 'summonerName']).add_suffix('_4').rename(columns={'championName_4':'championName'})
+
 current_team = pd.DataFrame(
-    {'summonerName': [value for key, value in summoner_ids.items()], 'championName':champion_selection}
+    {'summonerName': [value for key, value in summoner_ids.items() if value != my_summoner_name], 'championName':champion_selection}
 )
 current_team_stats = pd.merge(current_team, player_combined, 'left', on = ['summonerName', 'championName']).fillna(0)
-current_team_stats.drop(current_team_stats.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
 
 current_team_stats['kda'] = round((current_team_stats['kills'] + current_team_stats['deaths']) / current_team_stats['deaths'], 2)
 
@@ -181,7 +139,13 @@ print(current_team_stats[['summonerName', 'championName', 'kda']])
 current_team_out = current_team_stats.drop(columns=['summonerName', 'championName', 'win', 'count', 'kda']).stack()
 current_team_out.index = current_team_out.index.map('{0[1]}_{0[0]}'.format)
 current_team_out = current_team_out.to_frame().T
-current_team_out = current_team_out.reindex(sorted(current_team_out.columns), axis=1)
+current_team_out_repeat = pd.concat([current_team_out]*len(champions['championName']), ignore_index=True)
+
+# create dataset with all champions for my summoner + other 4 summoners
+all_summoners = pd.concat([current_team_out_repeat, my_summoner_stats_all], axis=1).fillna(0)
+all_summoners = all_summoners.reindex(sorted(all_summoners.columns), axis=1)
+
+all_summoners.drop(all_summoners.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
 
 from sklearn.linear_model import LogisticRegression
 from sklearn import preprocessing
@@ -224,36 +188,27 @@ print(f'XGB Score (Train): {round(xgboost.score(x_train_scaled, y_train), 4)}')
 print(f'XGB Score (Test): {round(xgboost.score(x_test_scaled, y_test), 4)}')
 
 # Test dataset
-x_curr = current_team_out.reindex(sorted(current_team_out.columns), axis=1)
+x_curr = all_summoners.drop(columns=['championName'])
 x_curr_scaled = scaler.transform(x_curr)
 
 # Fit and predict
 ## Logistic Regression
+print('Logistic Regression')
 logit_result = logit.predict(x_curr_scaled)
 logit_prob = logit.predict_proba(x_curr_scaled)
-if logit_result:
-    print(f'Logistic Regression result: Win ({round(logit_prob[0][1] * 100, 2)}%)')
-else:
-    print(f'Logistic Regression result: Lose ({round(logit_prob[0][0] * 100, 2)}%)')
+logit_champion = pd.DataFrame({'championName':all_summoners['championName'], 'win_prob':[round(prob[1]*100, 2) for prob in logit_prob]}).sort_values('win_prob', ascending=False)
+print(logit_champion.head())
 
 ## Random Forest
-rf_result = rfc.predict(x_curr_scaled)
-rf_prob = rfc.predict_proba(x_curr_scaled)
-if rf_result:
-    print(f'Random Forest result: Win ({round(rf_prob[0][1] * 100, 2)}%)')
-else:
-    print(f'Random Forest result: Lose ({round(rf_prob[0][0] * 100, 2)}%)')
+print('Random Forest')
+rfc_result = rfc.predict(x_curr_scaled)
+rfc_prob = rfc.predict_proba(x_curr_scaled)
+rfc_champion = pd.DataFrame({'championName':all_summoners['championName'], 'win_prob':[round(prob[1]*100, 2) for prob in rfc_prob]}).sort_values('win_prob', ascending=False)
+print(rfc_champion.head())
 
 ## XGBoost
+print('XGBoost')
 xgb_result = xgboost.predict(x_curr_scaled)
 xgb_prob = xgboost.predict_proba(x_curr_scaled)
-if xgb_result:
-    print(f'XGB result: Win ({round(xgb_prob[0][1] * 100, 2)}%)')
-else:
-    print(f'XGB result: Lose ({round(xgb_prob[0][0] * 100, 2)}%)')
-
-avg_result = (logit_prob + rf_prob + xgb_prob) / 3
-if avg_result[0][0] > 0.5:
-    print(f'Average result: Lose ({round(avg_result[0][0], 2) * 100}%)')
-else:
-    print(f'Average result: Win ({round(avg_result[0][1], 2) * 100}%)')
+xgb_champion = pd.DataFrame({'championName':all_summoners['championName'], 'win_prob':[round(prob[1]*100, 2) for prob in xgb_prob]}).sort_values('win_prob', ascending=False)
+print(xgb_champion.head())
