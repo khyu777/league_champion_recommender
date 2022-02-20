@@ -55,7 +55,14 @@ if analysis_type == 'y':
 elif analysis_type == 'n':
     summoner_name = input('Summoner Name: ')
     summoner_id = lol_watcher.summoner.by_name(my_region, summoner_name)['id']
-    summoners = lol_watcher.spectator.by_summoner(my_region, summoner_id)['participants']
+    while True:
+        try:
+            summoners = lol_watcher.spectator.by_summoner(my_region, summoner_id)['participants']
+        except ApiError as err:
+            if err.response.status_code == 404:
+                print('Summoner not in game, please try again')
+        else:
+            break
     team_choice = input('Ally/Enemy team? (A/E) ')
     teamIds = [100, 200]
     curr_teamIds = {summoner['summonerName']:summoner['teamId'] for summoner in summoners}
@@ -123,11 +130,10 @@ for id, name in tqdm(summoner_ids.items(), bar_format='{l_bar}{bar:20}{r_bar}{ba
                 player['summonerName'] = name
                 player_stats.append(player)
 
-player_stats_df = pd.DataFrame(player_stats)
+player_stats_df = pd.DataFrame(player_stats).drop(columns=['championId', 'challenges'])
 player_stats_df['championName'] = player_stats_df['championName'].str.lower()
 
 player_stats_df_summary = player_stats_df.groupby(['summonerName', 'championName']).mean()
-player_stats_df_summary.drop(columns=['championId'], inplace=True)
 player_stats_df_count = player_stats_df.groupby(['summonerName', 'championName']).size()
 player_stats_df_summary = player_stats_df_summary.join(pd.DataFrame(player_stats_df_count, columns = ['count']))
 player_stats_df_summary.reset_index(level = 0, inplace=True)
@@ -166,6 +172,7 @@ current_team = pd.DataFrame(
     {'summonerName': [value for key, value in summoner_ids.items()], 'championName':champion_selection}
 )
 current_team_stats = pd.merge(current_team, player_combined, 'left', on = ['summonerName', 'championName']).fillna(0)
+current_team_stats.drop(current_team_stats.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
 
 current_team_stats['kda'] = round((current_team_stats['kills'] + current_team_stats['deaths']) / current_team_stats['deaths'], 2)
 
