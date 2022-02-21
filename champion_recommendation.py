@@ -33,17 +33,57 @@ for champion in champ['data']:
     champ_stats[champion] = champ['data'][champion]['stats']
 
 champ_stats_df = pd.DataFrame.from_dict(champ_stats, orient = 'index')
-champ_stats_df.index.str.lower()
+champ_stats_df.index = champ_stats_df.index.str.lower()
 champ_stats_df.head()
 
-print('Please paste content from champion select chat:')
-summoner_names = [summoner.replace(' joined the lobby', '') for summoner in sys.stdin.read().split('\n')]
-summoner_names.remove('')
+self_other = input('Self or other? (S/O) ').lower()
 summoner_ids = {}
-for summoner in summoner_names:
-    print(summoner)
-    summoner_ids[lol_watcher.summoner.by_name(my_region, summoner)['puuid']] = summoner
-my_summoner_name = input('Your summoner name: ')
+if self_other == 's':
+    print('Please paste content from champion select chat:')
+    summoner_names = [summoner.replace(' joined the lobby', '') for summoner in sys.stdin.read().split('\n')]
+    summoner_names.remove('')
+    for summoner in summoner_names:
+        print(summoner)
+        summoner_ids[lol_watcher.summoner.by_name(my_region, summoner)['puuid']] = summoner
+    my_summoner_name = input('Your summoner name (or the name for other): ')
+elif self_other == 'o':
+    while True:
+        try:
+            my_summoner_name = input('Summoner name for other: ')
+            summoner_id = lol_watcher.summoner.by_name(my_region, my_summoner_name)['id']
+            summoners = lol_watcher.spectator.by_summoner(my_region, summoner_id)['participants']
+        except ApiError as err:
+            if err.response.status_code == 404:
+                print('Summoner not in game, please try again')
+        else:
+            break
+    team_choice = input('Ally/Enemy team? (A/E) ')
+    teamIds = [100, 200]
+    summoner_names = [summoner['summonerName'] for summoner in summoners]
+    curr_teamIds = {summoner['summonerName']:summoner['teamId'] for summoner in summoners}
+    if my_summoner_name not in curr_teamIds:
+        my_summoner_name = input('summonerName is not correct. please check capitalization and reenter: ')
+    curr_champIds = []
+    if team_choice.lower() == 'a':
+        teamId = curr_teamIds[my_summoner_name]
+    elif team_choice.lower() == 'e':
+        teamIds.remove(curr_teamIds[my_summoner_name])
+        teamId = teamIds[0]
+    for summoner in summoners:
+        if summoner['teamId'] == teamId:
+            while True:
+                try:
+                    summoner_ids[lol_watcher.summoner.by_name(my_region, summoner['summonerName'])['puuid']] = summoner['summonerName']
+                    curr_champIds.append(summoner['championId'])
+                except ApiError as err:
+                    print(err.response.status_code)
+                    if err.response.status_code == 429:
+                        print('Too many requests!! Waiting 2 minutes...')
+                        time.sleep(120)
+                    if err.response.status_code == 404:
+                        print('Summoner not found')
+                else:
+                    break
 
 player_stats = []
 americas = ['br1', 'la1', 'la2', 'na1']
@@ -97,7 +137,7 @@ player_stats_df_summary.reset_index(level = 0, inplace=True)
 # Combine player stat and champion base stat
 player_combined = player_stats_df_summary.join(champ_stats_df)
 player_combined = player_combined.reset_index().rename(columns={'index':'championName'})
-player_combined.summonerName.unique()
+print(player_combined.summonerName.unique())
 
 champion_selection = []
 for summoner in summoner_ids.values():
@@ -139,13 +179,33 @@ print(current_team_stats[['summonerName', 'championName', 'kda']])
 current_team_out = current_team_stats.drop(columns=['summonerName', 'championName', 'win', 'count', 'kda']).stack()
 current_team_out.index = current_team_out.index.map('{0[1]}_{0[0]}'.format)
 current_team_out = current_team_out.to_frame().T
-current_team_out_repeat = pd.concat([current_team_out]*len(champions['championName']), ignore_index=True)
+#current_team_out_repeat = pd.concat([current_team_out]*len(champions['championName']), ignore_index=True)
 
 # create dataset with all champions for my summoner + other 4 summoners
-all_summoners = pd.concat([current_team_out_repeat, my_summoner_stats_all], axis=1).fillna(0)
+#all_summoners = pd.concat([current_team_out_repeat, my_summoner_stats_all], axis=1).fillna(0)
+all_summoners = current_team_out.merge(my_summoner_stats_all, how = 'cross').fillna(0)
 all_summoners = all_summoners.reindex(sorted(all_summoners.columns), axis=1)
 
 all_summoners.drop(all_summoners.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
+
+all_summoners.to_csv('dataset/output/champion_rec_output.csv')
+
+# all combinations
+def get_stats(num, summoner):
+    my_summoner_stats_all = pd.merge(champions, player_combined[player_combined['summonerName']==summoner], 'left', on = 'championName')
+    my_summoner_stats_all = my_summoner_stats_all.drop(columns=['win', 'count', 'summonerName']).add_suffix(num)
+    return(my_summoner_stats_all.dropna(thresh=2))
+
+summoner_0 = get_stats('_0', summoner_names[0])
+summoner_1 = get_stats('_1', summoner_names[1])
+summoner_2 = get_stats('_2', summoner_names[2])
+summoner_3 = get_stats('_3', summoner_names[3])
+summoner_4 = get_stats('_4', summoner_names[4])
+
+summoner_all_comb = summoner_0.merge(summoner_1, how='cross').merge(summoner_2, how='cross').merge(summoner_3, how='cross').merge(summoner_4, how='cross')
+summoner_all_comb['championNames'] = summoner_all_comb['championName_0'].str.title() + ' / ' + summoner_all_comb['championName_1'].str.title() + ' / ' + summoner_all_comb['championName_2'].str.title() + ' / ' + summoner_all_comb['championName_3'].str.title() + ' / ' + summoner_all_comb['championName_4'].str.title()
+summoner_all_comb.drop(summoner_all_comb.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
+summoner_all_comb = summoner_all_comb.reindex(sorted(summoner_all_comb.columns), axis=1)
 
 from sklearn.linear_model import LogisticRegression
 from sklearn import preprocessing
@@ -191,6 +251,9 @@ print(f'XGB Score (Test): {round(xgboost.score(x_test_scaled, y_test), 4)}')
 x_curr = all_summoners.drop(columns=['championName'])
 x_curr_scaled = scaler.transform(x_curr)
 
+x_curr_auto = summoner_all_comb.drop(list(summoner_all_comb.filter(regex = 'championName')), axis=1)
+x_curr_auto_scaled = scaler.transform(x_curr_auto)
+
 # Fit and predict
 ## Logistic Regression
 print('Logistic Regression')
@@ -199,6 +262,12 @@ logit_prob = logit.predict_proba(x_curr_scaled)
 logit_champion = pd.DataFrame({'championName':all_summoners['championName'], 'win_prob':[round(prob[1]*100, 2) for prob in logit_prob]}).sort_values('win_prob', ascending=False)
 print(logit_champion.head())
 
+print(summoner_ids.values())
+logit_result_auto = logit.predict(x_curr_auto_scaled)
+logit_prob_auto = logit.predict_proba(x_curr_auto_scaled)
+logit_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in logit_prob_auto]}).sort_values('win_prob', ascending=False)
+print(logit_champion_auto.head())
+
 ## Random Forest
 print('Random Forest')
 rfc_result = rfc.predict(x_curr_scaled)
@@ -206,9 +275,25 @@ rfc_prob = rfc.predict_proba(x_curr_scaled)
 rfc_champion = pd.DataFrame({'championName':all_summoners['championName'], 'win_prob':[round(prob[1]*100, 2) for prob in rfc_prob]}).sort_values('win_prob', ascending=False)
 print(rfc_champion.head())
 
+print(summoner_ids.values())
+rfc_result_auto = rfc.predict(x_curr_auto_scaled)
+rfc_prob_auto = rfc.predict_proba(x_curr_auto_scaled)
+rfc_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in rfc_prob_auto]}).sort_values('win_prob', ascending=False)
+print(rfc_champion_auto.head())
+
 ## XGBoost
 print('XGBoost')
 xgb_result = xgboost.predict(x_curr_scaled)
 xgb_prob = xgboost.predict_proba(x_curr_scaled)
 xgb_champion = pd.DataFrame({'championName':all_summoners['championName'], 'win_prob':[round(prob[1]*100, 2) for prob in xgb_prob]}).sort_values('win_prob', ascending=False)
 print(xgb_champion.head())
+
+print(summoner_ids.values())
+xgb_result_auto = xgboost.predict(x_curr_auto_scaled)
+xgb_prob_auto = xgboost.predict_proba(x_curr_auto_scaled)
+xgb_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in xgb_prob_auto]}).sort_values('win_prob', ascending=False)
+print(xgb_champion_auto.head())
+
+## Average
+average_champion = pd.concat([logit_champion, rfc_champion, xgb_champion]).groupby('championName').mean().sort_values('win_prob', ascending=False)
+print(average_champion.head())

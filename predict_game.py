@@ -66,6 +66,8 @@ elif analysis_type == 'n':
     team_choice = input('Ally/Enemy team? (A/E) ')
     teamIds = [100, 200]
     curr_teamIds = {summoner['summonerName']:summoner['teamId'] for summoner in summoners}
+    if summoner_name not in curr_teamIds:
+        summoner_name = input('summonerName is not correct. please check capitalization and reenter: ')
     curr_champIds = []
     if team_choice.lower() == 'a':
         teamId = curr_teamIds[summoner_name]
@@ -141,7 +143,7 @@ player_stats_df_summary.reset_index(level = 0, inplace=True)
 # Combine player stat and champion base stat
 player_combined = player_stats_df_summary.join(champ_stats_df)
 player_combined = player_combined.reset_index().rename(columns={'index':'championName'})
-player_combined.summonerName.unique()
+print(player_combined.summonerName.unique())
 
 if analysis_type == 'y':
     champion_selection = []
@@ -182,6 +184,8 @@ current_team_out = current_team_stats.drop(columns=['summonerName', 'championNam
 current_team_out.index = current_team_out.index.map('{0[1]}_{0[0]}'.format)
 current_team_out = current_team_out.to_frame().T
 current_team_out = current_team_out.reindex(sorted(current_team_out.columns), axis=1)
+
+current_team_out.to_csv('dataset/output/predict_game_output.csv')
 
 from sklearn.linear_model import LogisticRegression
 from sklearn import preprocessing

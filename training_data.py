@@ -8,7 +8,14 @@ from datetime import datetime
 from constants import ACCESS_TOKEN
 
 lol_watcher = LolWatcher(ACCESS_TOKEN)
-my_region = 'na1'
+platform = ['br1', 'eun1', 'euw1', 'jp1', 'kr', 'la1', 'la2', 'na1', 'oc1', 'tr1', 'ru']
+while True:
+    my_region = input('Region: (i.e. na1, kr): ')
+    if my_region not in platform:
+        print('not a valid region. please enter again')
+        continue
+    else:
+        break
 
 # Champion base stat
 latest = lol_watcher.data_dragon.versions_for_region(my_region)['n']['champion']
@@ -29,8 +36,7 @@ champ_stats_df.head()
 ## get summoner ids from challenger queue
 summoner_list_challenger = [summoner['summonerId'] for summoner in lol_watcher.league.challenger_by_queue(my_region, 'RANKED_SOLO_5x5')['entries']]
 summoner_list_gm = [summoner['summonerId'] for summoner in lol_watcher.league.grandmaster_by_queue(my_region, 'RANKED_SOLO_5x5')['entries']]
-summoner_list_master = [summoner['summonerId'] for summoner in lol_watcher.league.masters_by_queue(my_region, 'RANKED_SOLO_5x5')['entries']]
-summoner_list = summoner_list_challenger + summoner_list_gm + summoner_list_master
+summoner_list = summoner_list_challenger + summoner_list_gm
 
 ## get puuid for each summoner
 summoner_list_puuid = []
@@ -51,10 +57,19 @@ for summoner_id in tqdm(summoner_list, bar_format='{l_bar}{bar:20}{r_bar}{bar:-2
 
 ## get match list
 matches = []
+americas = ['br1', 'la1', 'la2', 'na1']
+asia = ['jp1', 'kr', 'oc1', 'tr1', 'ru']
+europe = ['eun1', 'euw1']
+if my_region in americas:
+    region = 'americas'
+elif my_region in asia:
+    region = 'asia'
+elif my_region in europe:
+    region = 'europe'
 for puuid in tqdm(summoner_list_puuid, bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'):
     while True:
         try:
-            matches_by_puuid = lol_watcher.match.matchlist_by_puuid('americas', puuid, count = 2)
+            matches_by_puuid = lol_watcher.match.matchlist_by_puuid(my_region, puuid, count = 5)
             time.sleep(1.2)
         except ApiError as err:
             print(err.response.status_code)
@@ -72,7 +87,7 @@ matches_info = []
 for match in tqdm(matches, bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'):
     while True:
         try:
-            match_info = lol_watcher.match.by_id('americas', match)
+            match_info = lol_watcher.match.by_id(region, match)
             time.sleep(1.2)
         except ApiError as err:
             #print(err.response.status_code)
@@ -108,4 +123,4 @@ matches_info_df.columns = ["_".join(map(str,a)) for a in matches_info_df.columns
 matches_info_df.head(10)
 
 ## save to csv
-matches_info_df.to_csv(f'dataset/training_dataset_{datetime.now().strftime("%m%d%y_%H%S")}.csv', index = False)
+matches_info_df.to_csv(f'dataset/training_dataset_{datetime.now().strftime("%m%d%y_%H%S")}_{my_region}.csv', index = False)
