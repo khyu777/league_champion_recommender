@@ -185,8 +185,6 @@ current_team_out.index = current_team_out.index.map('{0[1]}_{0[0]}'.format)
 current_team_out = current_team_out.to_frame().T
 current_team_out = current_team_out.reindex(sorted(current_team_out.columns), axis=1)
 
-current_team_out.to_csv('dataset/output/predict_game_output.csv')
-
 from sklearn.linear_model import LogisticRegression
 from sklearn import preprocessing
 from sklearn.ensemble import RandomForestClassifier

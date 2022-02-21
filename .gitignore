@@ -1,5 +1,11 @@
+.gitignore
 /.vscode
 /__pycache__
 /dataset
 /venv
+/build
+/dist
 constants.py
+*.lnk
+*.spec
+*.exe
