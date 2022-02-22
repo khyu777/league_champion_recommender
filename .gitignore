@@ -6,6 +6,7 @@
 /build
 /dist
 constants.py
+practice.py
 *.lnk
 *.spec
 *.exe

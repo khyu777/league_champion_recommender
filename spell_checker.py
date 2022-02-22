@@ -29,6 +29,7 @@ class SpellChecker:
         self.top_manual.grid(column=1, row=6)
         self.top_manual_text = tk.StringVar()
         self.top_manual_entry = tk.Entry(root, width=10, bd=5, textvariable=self.top_manual_text)
+        self.top_manual_entry.bind('<Control-s>', lambda x: self.execute(self.toggle_top))
         self.top_manual_entry.grid(column=2, columnspan=2, row=6)
         self.top_time = tk.Label(root, text='05:00')
         self.top_time.grid(column=4, columnspan=2, row=6)
@@ -44,6 +45,7 @@ class SpellChecker:
         self.jg_manual_text = tk.StringVar()
         self.jg_manual_entry = tk.Entry(root, width=10, bd=5, textvariable=self.jg_manual_text)
         self.jg_manual_entry.grid(column=2, columnspan=2, row=10)
+        self.jg_manual_entry.bind('<Control-s>', lambda x: self.execute(self.toggle_jg))
         self.jg_time = tk.Label(root, text='05:00')
         self.jg_time.grid(column=4, columnspan=2, row=10)
         self.jg_button = tk.Button(root, text='Start', command=self.toggle_jg)
@@ -58,6 +60,7 @@ class SpellChecker:
         self.mid_manual_text = tk.StringVar()
         self.mid_manual_entry = tk.Entry(root, width=10, bd=5, textvariable=self.mid_manual_text)
         self.mid_manual_entry.grid(column=2, columnspan=2, row=14)
+        self.mid_manual_entry.bind('<Control-s>', lambda x: self.execute(self.toggle_mid))
         self.mid_time = tk.Label(root, text='05:00')
         self.mid_time.grid(column=4, columnspan=2, row=14)
         self.mid_button = tk.Button(root, text='Start', command=self.toggle_mid)
@@ -72,6 +75,7 @@ class SpellChecker:
         self.ad_manual_text = tk.StringVar()
         self.ad_manual_entry = tk.Entry(root, width=10, bd=5, textvariable=self.ad_manual_text)
         self.ad_manual_entry.grid(column=2, columnspan=2, row=18)
+        self.ad_manual_entry.bind('<Control-s>', lambda x: self.execute(self.toggle_ad))
         self.ad_time = tk.Label(root, text='05:00')
         self.ad_time.grid(column=4, columnspan=2, row=18)
         self.ad_button = tk.Button(root, text='Start', command=self.toggle_ad)
@@ -86,15 +90,22 @@ class SpellChecker:
         self.sup_manual_text = tk.StringVar()
         self.sup_manual_entry = tk.Entry(root, width=10, bd=5, textvariable=self.sup_manual_text)
         self.sup_manual_entry.grid(column=2, columnspan=2, row=22)
+        self.sup_manual_entry.bind('<Control-s>', lambda x: self.execute(self.toggle_sup))
         self.sup_time = tk.Label(root, text='05:00')
         self.sup_time.grid(column=4, columnspan=2, row=22)
         self.sup_button = tk.Button(root, text='Start', command=self.toggle_sup)
         self.sup_button.grid(column=1, columnspan=5, row=23)
-
+        
         self.blank = tk.Label(root, text = '')
         self.blank.grid(column=1, columnspan=5, row=24)
+        self.all = tk.Entry(root, bd=5)
+        self.all.bind('<Control-s>', lambda x: self.execute(self.input_info))
+        self.all.grid(column=1, columnspan=5, row=25)
+
+        self.blank = tk.Label(root, text = '')
+        self.blank.grid(column=1, columnspan=5, row=26)
         self.reset = tk.Button(root, text='Reset All', command=self.reset_all)
-        self.reset.grid(column=1, columnspan=5, row=25)
+        self.reset.grid(column=1, columnspan=5, row=27)
 
         def destroyer():
             root.quit()
@@ -102,7 +113,7 @@ class SpellChecker:
             sys.exit()
 
         self.quit = tk.Button(root, text = 'Exit', command=destroyer)
-        self.quit.grid(column=1, columnspan=5, row=26)
+        self.quit.grid(column=1, columnspan=5, row=28)
 
         self.top_paused = True
         self.jg_paused = True
@@ -114,6 +125,33 @@ class SpellChecker:
         self.top_cooldown_paused = False
 
         root.mainloop()
+
+    def input_info(self):
+        times = self.all.get().split(sep=' ')
+        for time in times:
+            if 'top' in time:
+                self.top_manual_entry.delete(0, tk.END)
+                self.top_manual_entry.insert(0, time.replace('top', ''))
+                self.toggle_top()
+            elif 'jg' in time:
+                self.jg_manual_entry.delete(0, tk.END)
+                self.jg_manual_entry.insert(0, time.replace('jg', ''))
+                self.toggle_jg()
+            elif 'mid' in time:
+                self.mid_manual_entry.delete(0, tk.END)
+                self.mid_manual_entry.insert(0, time.replace('mid', ''))
+                self.toggle_mid()
+            elif 'ad' in time:
+                self.ad_manual_entry.delete(0, tk.END)
+                self.ad_manual_entry.insert(0, time.replace('ad', ''))
+                self.toggle_ad()
+            elif 'sup' in time:
+                self.sup_manual_entry.delete(0, tk.END)
+                self.sup_manual_entry.insert(0, time.replace('sup', ''))
+                self.toggle_sup()
+    
+    def execute(self, event):
+        event()
 
     def reset_all(self):
         self.top_paused = True
@@ -195,7 +233,7 @@ class SpellChecker:
         timestr = '{:02}:{:02}'.format(*divmod(time - self.gametime, 60))
         self.top_time.config(text=timestr)
         self.top_time.after(1000, self.run_timer_top)
-        if time == 0:
+        if time - self.gametime == 0:
             self.top_paused = True
             self.top_button.config(text='Start')
             self.top_time.config(text='05:00') 
@@ -220,7 +258,7 @@ class SpellChecker:
         timestr = '{:02}:{:02}'.format(*divmod(time - self.gametime, 60))
         self.jg_time.config(text=timestr)
         self.jg_time.after(1000, self.run_timer_jg)
-        if time == 0:
+        if time - self.gametime == 0:
             self.jg_paused = True
             self.jg_button.config(text='Start')
             self.jg_time.config(text='05:00')
@@ -245,7 +283,7 @@ class SpellChecker:
         timestr = '{:02}:{:02}'.format(*divmod(time - self.gametime, 60))
         self.mid_time.config(text=timestr)
         self.mid_time.after(1000, self.run_timer_mid)
-        if time == 0:
+        if time - self.gametime == 0:
             self.mid_paused = True
             self.mid_button.config(text='Start')
             self.mid_time.config(text='05:00')
@@ -270,7 +308,7 @@ class SpellChecker:
         timestr = '{:02}:{:02}'.format(*divmod(time - self.gametime, 60))
         self.ad_time.config(text=timestr)
         self.ad_time.after(1000, self.run_timer_ad)
-        if time == 0:
+        if time - self.gametime == 0:
             self.ad_paused = True
             self.ad_button.config(text='Start')
             self.ad_time.config(text='05:00')
@@ -295,7 +333,7 @@ class SpellChecker:
         timestr = '{:02}:{:02}'.format(*divmod(time - self.gametime, 60))
         self.sup_time.config(text=timestr)
         self.sup_time.after(1000, self.run_timer_sup)
-        if time == 0:
+        if time - self.gametime == 0:
             self.sup_paused = True
             self.sup_button.config(text='Start')
             self.sup_time.config(text='05:00')

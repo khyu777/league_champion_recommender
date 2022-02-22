@@ -69,13 +69,13 @@ elif my_region in europe:
 for puuid in tqdm(summoner_list_puuid, bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'):
     while True:
         try:
-            matches_by_puuid = lol_watcher.match.matchlist_by_puuid(my_region, puuid, count = 5)
+            matches_by_puuid = lol_watcher.match.matchlist_by_puuid(region, puuid, count = 5)
             time.sleep(1.2)
         except ApiError as err:
             print(err.response.status_code)
             if err.response.status_code == 429:
                 print('Waiting...')
-                time.sleep(60)
+                time.sleep(120)
         else:
             break
     for match in matches_by_puuid:
