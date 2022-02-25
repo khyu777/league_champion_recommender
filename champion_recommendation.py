@@ -53,6 +53,7 @@ elif self_other == 'o':
             summoner_id = lol_watcher.summoner.by_name(my_region, my_summoner_name)['id']
             summoners = lol_watcher.spectator.by_summoner(my_region, summoner_id)['participants']
         except ApiError as err:
+            print(err.response.status_code)
             if err.response.status_code == 404:
                 print('Summoner not in game, please try again')
         else:
@@ -205,6 +206,8 @@ elif manual_auto == 'a':
         my_summoner_stats_all = my_summoner_stats_all.drop(columns=['win', 'count', 'summonerName']).add_suffix(num)
         return(my_summoner_stats_all.dropna(thresh=2))
 
+    summoner_names = [value for key, value in summoner_ids.items()]
+
     summoner_0 = get_stats('_0', summoner_names[0])
     summoner_1 = get_stats('_1', summoner_names[1])
     summoner_2 = get_stats('_2', summoner_names[2])
@@ -215,6 +218,9 @@ elif manual_auto == 'a':
     summoner_all_comb['championNames'] = summoner_all_comb['championName_0'].str.title() + ' / ' + summoner_all_comb['championName_1'].str.title() + ' / ' + summoner_all_comb['championName_2'].str.title() + ' / ' + summoner_all_comb['championName_3'].str.title() + ' / ' + summoner_all_comb['championName_4'].str.title()
     summoner_all_comb.drop(summoner_all_comb.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
     summoner_all_comb = summoner_all_comb.reindex(sorted(summoner_all_comb.columns), axis=1)
+    summoner_all_comb['count'] = [len(x.split(' / ')) for x in summoner_all_comb['championNames'].tolist()]
+    summoner_all_comb['distinct_count'] = [len(set(x.split(' / '))) for x in summoner_all_comb['championNames'].tolist()]
+    summoner_all_comb = summoner_all_comb[summoner_all_comb['count'] == summoner_all_comb['distinct_count']].drop(columns=['count', 'distinct_count'])
 
 from sklearn.linear_model import LogisticRegression
 from sklearn import preprocessing
@@ -293,13 +299,14 @@ elif manual_auto == 'a':
     # Fit and predict
     ## Logistic Regression
     print(summoner_ids.values())
+    print('Logit')
     logit_result_auto = logit.predict(x_curr_auto_scaled)
     logit_prob_auto = logit.predict_proba(x_curr_auto_scaled)
     logit_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in logit_prob_auto]}).sort_values('win_prob', ascending=False)
     print(logit_champion_auto.head())
 
     ## Random Forest
-    print(summoner_ids.values())
+    print('Random Forest')
     rfc_result_auto = rfc.predict(x_curr_auto_scaled)
     rfc_prob_auto = rfc.predict_proba(x_curr_auto_scaled)
     rfc_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in rfc_prob_auto]}).sort_values('win_prob', ascending=False)
@@ -307,8 +314,24 @@ elif manual_auto == 'a':
 
     ## XGBoost
     print('XGBoost')
-    print(summoner_ids.values())
     xgb_result_auto = xgboost.predict(x_curr_auto_scaled)
     xgb_prob_auto = xgboost.predict_proba(x_curr_auto_scaled)
     xgb_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in xgb_prob_auto]}).sort_values('win_prob', ascending=False)
     print(xgb_champion_auto.head())
+
+    auto_prob = summoner_all_comb.loc[:,['championName_0', 'championName_1', 'championName_2', 'championName_3', 'championName_4', 'championNames']]
+    auto_prob['win_prob_logit'] = pd.Series([x[0] for x in logit_prob_auto])
+    auto_prob['win_prob_rfc'] = pd.Series([x[0] for x in rfc_prob_auto])
+    auto_prob['win_prob_xgb'] = pd.Series([x[0] for x in xgb_prob_auto])
+
+    my_summoner_index = str(summoner_names.index(my_summoner_name))
+    auto_prob['win_prob_logit_avg'] = df = auto_prob.groupby('championName_' + my_summoner_index)['win_prob_logit'].transform('mean')
+    auto_prob['win_prob_rfc_avg'] = df = auto_prob.groupby('championName_' + my_summoner_index)['win_prob_rfc'].transform('mean')
+    auto_prob['win_prob_xgb_avg'] = df = auto_prob.groupby('championName_' + my_summoner_index)['win_prob_xgb'].transform('mean')
+    auto_prob['win_prob_overall_avg'] = auto_prob[['win_prob_logit_avg', 'win_prob_rfc_avg', 'win_prob_xgb_avg']].mean(axis=1)
+
+    print('Combined')
+    print(my_summoner_name + ': champion_' + str(int(my_summoner_index)+1))
+    print(auto_prob[['championNames', 'win_prob_logit_avg', 'win_prob_rfc_avg', 'win_prob_xgb_avg', 'win_prob_overall_avg']].sort_values('win_prob_overall_avg', ascending=False).head())
+
+input('Press any key to close')

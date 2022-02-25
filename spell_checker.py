@@ -20,25 +20,21 @@ class SpellChecker:
         self.gameTimer_addsec.grid(column=4, row=3)
         self.gameTimer_subtsec = tk.Button(root, text = '-sec', command=self.subt_sec)
         self.gameTimer_subtsec.grid(column=5, row=3)
-
-        self.blank = tk.Label(root, text='')
-        self.blank.grid(column=1, columnspan=5, row=4)
-        self.top = tk.Label(root, text = 'Top')
+        
+        self.top = tk.Label(root, text = 'Top', font='Helvetica 10 bold')
         self.top.grid(column=1, columnspan=5, row=5)
         self.top_manual = tk.Label(root, text = 'Time:')
         self.top_manual.grid(column=1, row=6)
         self.top_manual_text = tk.StringVar()
         self.top_manual_entry = tk.Entry(root, width=10, bd=5, textvariable=self.top_manual_text)
-        self.top_manual_entry.bind('<Control-s>', lambda x: self.execute(self.toggle_top))
+        self.top_manual_entry.bind('<Control-s>', lambda x: self.toggle_top)
         self.top_manual_entry.grid(column=2, columnspan=2, row=6)
         self.top_time = tk.Label(root, text='05:00')
         self.top_time.grid(column=4, columnspan=2, row=6)
         self.top_button = tk.Button(root, text='Start', command=self.toggle_top)
         self.top_button.grid(column=1, columnspan=5, row=7)
-
-        self.blank = tk.Label(root, text='')
-        self.blank.grid(column=1, columnspan=5, row=8)
-        self.jg = tk.Label(root, text = 'Jungle')
+        
+        self.jg = tk.Label(root, text = 'Jungle', font='Helvetica 10 bold')
         self.jg.grid(column=1, columnspan=5, row=9)
         self.jg_manual = tk.Label(root, text = 'Time:')
         self.jg_manual.grid(column=1, row=10)
@@ -50,10 +46,8 @@ class SpellChecker:
         self.jg_time.grid(column=4, columnspan=2, row=10)
         self.jg_button = tk.Button(root, text='Start', command=self.toggle_jg)
         self.jg_button.grid(column=1, columnspan=5, row=11)
-
-        self.blank = tk.Label(root, text = '')
-        self.blank.grid(column=1, columnspan=5, row=12)
-        self.mid = tk.Label(root, text = 'Mid')
+        
+        self.mid = tk.Label(root, text = 'Mid', font='Helvetica 10 bold')
         self.mid.grid(column=1, columnspan=5, row=13)
         self.mid_manual = tk.Label(root, text = 'Time:')
         self.mid_manual.grid(column=1, row=14)
@@ -65,10 +59,8 @@ class SpellChecker:
         self.mid_time.grid(column=4, columnspan=2, row=14)
         self.mid_button = tk.Button(root, text='Start', command=self.toggle_mid)
         self.mid_button.grid(column=1, columnspan=5, row=15)
-
-        self.blank = tk.Label(root, text = '')
-        self.blank.grid(column=1, columnspan=5, row=16)
-        self.ad = tk.Label(root, text = 'AD Carry')
+        
+        self.ad = tk.Label(root, text = 'AD Carry', font='Helvetica 10 bold')
         self.ad.grid(column=1, columnspan=5, row=17)
         self.ad_manual = tk.Label(root, text = 'Time:')
         self.ad_manual.grid(column=1, row=18)
@@ -80,10 +72,8 @@ class SpellChecker:
         self.ad_time.grid(column=4, columnspan=2, row=18)
         self.ad_button = tk.Button(root, text='Start', command=self.toggle_ad)
         self.ad_button.grid(column=1, columnspan=5, row=19)
-
-        self.blank = tk.Label(root, text = '')
-        self.blank.grid(column=1, columnspan=5, row=20)
-        self.sup = tk.Label(root, text = 'Support')
+        
+        self.sup = tk.Label(root, text = 'Support', font='Helvetica 10 bold')
         self.sup.grid(column=1, columnspan=5, row=21)
         self.sup_manual = tk.Label(root, text = 'Time:')
         self.sup_manual.grid(column=1, row=22)
@@ -101,9 +91,11 @@ class SpellChecker:
         self.all = tk.Entry(root, bd=5)
         self.all.bind('<Control-s>', lambda x: self.execute(self.input_info))
         self.all.grid(column=1, columnspan=5, row=25)
+        
+        self.reset = tk.Button(root, text='Update', command=self.update_all_text)
+        self.reset.grid(column=1, columnspan=5, row=26)
 
-        self.blank = tk.Label(root, text = '')
-        self.blank.grid(column=1, columnspan=5, row=26)
+        
         self.reset = tk.Button(root, text='Reset All', command=self.reset_all)
         self.reset.grid(column=1, columnspan=5, row=27)
 
@@ -126,29 +118,34 @@ class SpellChecker:
 
         root.mainloop()
 
+    def update_all_text(self):
+        combined = [str(self.top_manual_entry.get()) + 'top',
+                    str(self.jg_manual_entry.get()) + 'jg',
+                    str(self.mid_manual_entry.get()) + 'mid',
+                    str(self.ad_manual_entry.get()) + 'ad',
+                    str(self.sup_manual_entry.get()) + 'sup']
+        combined = [time for time in combined if any(str.isdigit(c) for c in time)]
+        self.all.delete(0, tk.END)        
+        self.all.insert(0, combined)
+
     def input_info(self):
         times = self.all.get().split(sep=' ')
         for time in times:
             if 'top' in time:
                 self.top_manual_entry.delete(0, tk.END)
                 self.top_manual_entry.insert(0, time.replace('top', ''))
-                self.toggle_top()
             elif 'jg' in time:
                 self.jg_manual_entry.delete(0, tk.END)
                 self.jg_manual_entry.insert(0, time.replace('jg', ''))
-                self.toggle_jg()
             elif 'mid' in time:
                 self.mid_manual_entry.delete(0, tk.END)
                 self.mid_manual_entry.insert(0, time.replace('mid', ''))
-                self.toggle_mid()
             elif 'ad' in time:
                 self.ad_manual_entry.delete(0, tk.END)
                 self.ad_manual_entry.insert(0, time.replace('ad', ''))
-                self.toggle_ad()
             elif 'sup' in time:
                 self.sup_manual_entry.delete(0, tk.END)
                 self.sup_manual_entry.insert(0, time.replace('sup', ''))
-                self.toggle_sup()
     
     def execute(self, event):
         event()
@@ -217,10 +214,9 @@ class SpellChecker:
         self.top_paused = False
         self.top_oldtime = self.gametime
         self.top_delta = 0
-        if len(self.top_manual_entry.get()) != 4: 
-            timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
-            self.top_manual_entry.delete(0, tk.END)
-            self.top_manual_entry.insert(0, timestr)
+        timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
+        self.top_manual_entry.delete(0, tk.END)
+        self.top_manual_entry.insert(0, timestr)
         self.run_timer_top()
 
     def run_timer_top(self):
@@ -242,10 +238,9 @@ class SpellChecker:
         self.jg_paused = False
         self.jg_oldtime = self.gametime
         self.jg_delta = 0
-        if len(self.jg_manual_entry.get()) != 4: 
-            timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
-            self.jg_manual_entry.delete(0, tk.END)
-            self.jg_manual_entry.insert(0, timestr)
+        timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
+        self.jg_manual_entry.delete(0, tk.END)
+        self.jg_manual_entry.insert(0, timestr)
         self.run_timer_jg()
 
     def run_timer_jg(self):
@@ -267,10 +262,9 @@ class SpellChecker:
         self.mid_paused = False
         self.mid_oldtime = self.gametime
         self.mid_delta = 0
-        if len(self.mid_manual_entry.get()) != 4: 
-            timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
-            self.mid_manual_entry.delete(0, tk.END)
-            self.mid_manual_entry.insert(0, timestr)
+        timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
+        self.mid_manual_entry.delete(0, tk.END)
+        self.mid_manual_entry.insert(0, timestr)
         self.run_timer_mid()
 
     def run_timer_mid(self):
@@ -292,10 +286,9 @@ class SpellChecker:
         self.ad_paused = False
         self.ad_oldtime = self.gametime
         self.ad_delta = 0
-        if len(self.ad_manual_entry.get()) != 4: 
-            timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
-            self.ad_manual_entry.delete(0, tk.END)
-            self.ad_manual_entry.insert(0, timestr)
+        timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
+        self.ad_manual_entry.delete(0, tk.END)
+        self.ad_manual_entry.insert(0, timestr)
         self.run_timer_ad()
 
     def run_timer_ad(self):
@@ -317,10 +310,9 @@ class SpellChecker:
         self.sup_paused = False
         self.sup_oldtime = self.gametime
         self.sup_delta = 0
-        if len(self.sup_manual_entry.get()) != 4: 
-            timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
-            self.sup_manual_entry.delete(0, tk.END)
-            self.sup_manual_entry.insert(0, timestr)
+        timestr = '{:02}{:02}'.format(*divmod(self.gametime + 300, 60))
+        self.sup_manual_entry.delete(0, tk.END)
+        self.sup_manual_entry.insert(0, timestr)
         self.run_timer_sup()
 
     def run_timer_sup(self):
