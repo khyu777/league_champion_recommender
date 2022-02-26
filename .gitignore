@@ -5,6 +5,7 @@
 /venv
 /build
 /dist
+/trained_models
 constants.py
 practice.py
 *.lnk

@@ -222,57 +222,19 @@ elif manual_auto == 'a':
     summoner_all_comb['distinct_count'] = [len(set(x.split(' / '))) for x in summoner_all_comb['championNames'].tolist()]
     summoner_all_comb = summoner_all_comb[summoner_all_comb['count'] == summoner_all_comb['distinct_count']].drop(columns=['count', 'distinct_count'])
 
-from sklearn.linear_model import LogisticRegression
-from sklearn import preprocessing
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 import xgboost as xgb
+import joblib
 
-# Import training dataset
-path = os.getcwd() + '\\dataset'
-filenames = [i for i in glob.glob(os.path.join(path, '*.csv'))]
-training_dataset = pd.concat([pd.read_csv(f) for f in filenames])
+scaler = joblib.load('trained_models/scaler.joblib')
+rfc = joblib.load('trained_models/rfc.joblib')
 
-## split into train/test
-x_train, x_test, y_train, y_test = train_test_split(
-    training_dataset.reindex(sorted(training_dataset.columns), axis=1).drop(columns = 'win_'),
-    training_dataset['win_'],
-    random_state=42
-)
-
-scaler = preprocessing.StandardScaler()
-x_train_scaled = scaler.fit_transform(x_train)
-x_test_scaled = scaler.transform(x_test)
-
-logit = LogisticRegression(max_iter=50000)
-logit.fit(x_train_scaled, y_train)
-
-print(f'Logit Score (Train): {round(logit.score(x_train_scaled, y_train), 4)}')
-print(f'Logit Score (Test): {round(logit.score(x_test_scaled, y_test), 4)}')
-
-rfc = RandomForestClassifier()
-rfc.fit(x_train_scaled, y_train)
-
-print(f'Random Forest Score (Train): {round(rfc.score(x_train_scaled, y_train), 4)}')
-print(f'Random Forest Score (Test): {round(rfc.score(x_test_scaled, y_test), 4)}')
-
-xgboost = xgb.XGBClassifier(use_label_encoder=False, eval_metric = 'logloss')
-xgboost.fit(x_train_scaled, y_train)
-
-print(f'XGB Score (Train): {round(xgboost.score(x_train_scaled, y_train), 4)}')
-print(f'XGB Score (Test): {round(xgboost.score(x_test_scaled, y_test), 4)}')
+xgboost = xgb.XGBClassifier()
+xgboost.load_model('trained_models/xgb.json')
 
 # Test dataset
 if manual_auto == 'm':
     x_curr = all_summoners.drop(columns=['championName'])
     x_curr_scaled = scaler.transform(x_curr)
-
-    ## Logistic Regression
-    print('Logistic Regression')
-    logit_result = logit.predict(x_curr_scaled)
-    logit_prob = logit.predict_proba(x_curr_scaled)
-    logit_champion = pd.DataFrame({'championName':all_summoners['championName'], 'win_prob':[round(prob[1]*100, 2) for prob in logit_prob]}).sort_values('win_prob', ascending=False)
-    print(logit_champion.head())
 
     ## Random Forest
     print('Random Forest')
@@ -289,7 +251,7 @@ if manual_auto == 'm':
     print(xgb_champion.head())
 
     ## Average
-    average_champion = pd.concat([logit_champion, rfc_champion, xgb_champion]).groupby('championName').mean().sort_values('win_prob', ascending=False)
+    average_champion = pd.concat([rfc_champion, xgb_champion]).groupby('championName').mean().sort_values('win_prob', ascending=False)
     print(average_champion.head())
 
 elif manual_auto == 'a':
@@ -297,14 +259,6 @@ elif manual_auto == 'a':
     x_curr_auto_scaled = scaler.transform(x_curr_auto)
 
     # Fit and predict
-    ## Logistic Regression
-    print(summoner_ids.values())
-    print('Logit')
-    logit_result_auto = logit.predict(x_curr_auto_scaled)
-    logit_prob_auto = logit.predict_proba(x_curr_auto_scaled)
-    logit_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in logit_prob_auto]}).sort_values('win_prob', ascending=False)
-    print(logit_champion_auto.head())
-
     ## Random Forest
     print('Random Forest')
     rfc_result_auto = rfc.predict(x_curr_auto_scaled)
@@ -320,18 +274,16 @@ elif manual_auto == 'a':
     print(xgb_champion_auto.head())
 
     auto_prob = summoner_all_comb.loc[:,['championName_0', 'championName_1', 'championName_2', 'championName_3', 'championName_4', 'championNames']]
-    auto_prob['win_prob_logit'] = pd.Series([x[0] for x in logit_prob_auto])
     auto_prob['win_prob_rfc'] = pd.Series([x[0] for x in rfc_prob_auto])
     auto_prob['win_prob_xgb'] = pd.Series([x[0] for x in xgb_prob_auto])
 
     my_summoner_index = str(summoner_names.index(my_summoner_name))
-    auto_prob['win_prob_logit_avg'] = df = auto_prob.groupby('championName_' + my_summoner_index)['win_prob_logit'].transform('mean')
     auto_prob['win_prob_rfc_avg'] = df = auto_prob.groupby('championName_' + my_summoner_index)['win_prob_rfc'].transform('mean')
     auto_prob['win_prob_xgb_avg'] = df = auto_prob.groupby('championName_' + my_summoner_index)['win_prob_xgb'].transform('mean')
-    auto_prob['win_prob_overall_avg'] = auto_prob[['win_prob_logit_avg', 'win_prob_rfc_avg', 'win_prob_xgb_avg']].mean(axis=1)
+    auto_prob['win_prob_overall_avg'] = auto_prob[['win_prob_rfc_avg', 'win_prob_xgb_avg']].mean(axis=1)
 
     print('Combined')
     print(my_summoner_name + ': champion_' + str(int(my_summoner_index)+1))
-    print(auto_prob[['championNames', 'win_prob_logit_avg', 'win_prob_rfc_avg', 'win_prob_xgb_avg', 'win_prob_overall_avg']].sort_values('win_prob_overall_avg', ascending=False).head())
+    print(auto_prob[['championNames', 'win_prob_rfc_avg', 'win_prob_xgb_avg', 'win_prob_overall_avg']].sort_values('win_prob_overall_avg', ascending=False).head())
 
 input('Press any key to close')

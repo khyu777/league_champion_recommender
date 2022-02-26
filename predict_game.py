@@ -185,58 +185,24 @@ current_team_out.index = current_team_out.index.map('{0[1]}_{0[0]}'.format)
 current_team_out = current_team_out.to_frame().T
 current_team_out = current_team_out.reindex(sorted(current_team_out.columns), axis=1)
 
-from sklearn.linear_model import LogisticRegression
-from sklearn import preprocessing
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
 import xgboost as xgb
+import joblib
 
 # Import training dataset
-path = os.getcwd() + '\\dataset'
-filenames = [i for i in glob.glob(os.path.join(path, '*.csv'))]
-training_dataset = pd.concat([pd.read_csv(f) for f in filenames])
+import xgboost as xgb
+import joblib
 
-## split into train/test
-x_train, x_test, y_train, y_test = train_test_split(
-    training_dataset.reindex(sorted(training_dataset.columns), axis=1).drop(columns = 'win_'),
-    training_dataset['win_'],
-    random_state=42
-)
+scaler = joblib.load('trained_models/scaler.joblib')
+rfc = joblib.load('trained_models/rfc.joblib')
 
-scaler = preprocessing.StandardScaler()
-x_train_scaled = scaler.fit_transform(x_train)
-x_test_scaled = scaler.transform(x_test)
-
-logit = LogisticRegression(max_iter=50000)
-logit.fit(x_train_scaled, y_train)
-
-print(f'Logit Score (Train): {round(logit.score(x_train_scaled, y_train), 4)}')
-print(f'Logit Score (Test): {round(logit.score(x_test_scaled, y_test), 4)}')
-
-rfc = RandomForestClassifier()
-rfc.fit(x_train_scaled, y_train)
-
-print(f'Random Forest Score (Train): {round(rfc.score(x_train_scaled, y_train), 4)}')
-print(f'Random Forest Score (Test): {round(rfc.score(x_test_scaled, y_test), 4)}')
-
-xgboost = xgb.XGBClassifier(use_label_encoder=False, eval_metric = 'logloss')
-xgboost.fit(x_train_scaled, y_train)
-
-print(f'XGB Score (Train): {round(xgboost.score(x_train_scaled, y_train), 4)}')
-print(f'XGB Score (Test): {round(xgboost.score(x_test_scaled, y_test), 4)}')
+xgboost = xgb.XGBClassifier()
+xgboost.load_model('trained_models/xgb.json')
 
 # Test dataset
 x_curr = current_team_out.reindex(sorted(current_team_out.columns), axis=1)
 x_curr_scaled = scaler.transform(x_curr)
 
 # Fit and predict
-## Logistic Regression
-logit_result = logit.predict(x_curr_scaled)
-logit_prob = logit.predict_proba(x_curr_scaled)
-if logit_result:
-    print(f'Logistic Regression result: Win ({round(logit_prob[0][1] * 100, 2)}%)')
-else:
-    print(f'Logistic Regression result: Lose ({round(logit_prob[0][0] * 100, 2)}%)')
 
 ## Random Forest
 rf_result = rfc.predict(x_curr_scaled)
@@ -254,7 +220,7 @@ if xgb_result:
 else:
     print(f'XGB result: Lose ({round(xgb_prob[0][0] * 100, 2)}%)')
 
-avg_result = (logit_prob + rf_prob + xgb_prob) / 3
+avg_result = (rf_prob + xgb_prob) / 2
 if avg_result[0][0] > 0.5:
     print(f'Average result: Lose ({round(avg_result[0][0], 2) * 100}%)')
 else:
