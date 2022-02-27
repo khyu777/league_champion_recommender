@@ -5,6 +5,7 @@ from tqdm import tqdm
 from constants import ACCESS_TOKEN
 import os
 import glob
+import numpy as np
 
 # define region / set up lolwatcher
 lol_watcher = LolWatcher(ACCESS_TOKEN)
@@ -32,7 +33,7 @@ for champion in champ['data']:
     champ_stats[champion] = champ['data'][champion]['stats']
 
 champ_stats_df = pd.DataFrame.from_dict(champ_stats, orient = 'index')
-champ_stats_df.index.str.lower()
+champ_stats_df.index = champ_stats_df.index.str.lower()
 champ_stats_df.head()
 
 summoner_ids = {}
@@ -128,17 +129,18 @@ for id, name in tqdm(summoner_ids.items(), bar_format='{l_bar}{bar:20}{r_bar}{ba
             else:
                 break
         for player in match_info['info']['participants']:
-            if player['puuid'] == id:
+            if player['puuid'] == id and match_info['info']['gameType'] == 'MATCHED_GAME':
                 player['summonerName'] = name
                 player_stats.append(player)
 
 player_stats_df = pd.DataFrame(player_stats).drop(columns=['championId', 'challenges'])
 player_stats_df['championName'] = player_stats_df['championName'].str.lower()
 
-player_stats_df_summary = player_stats_df.groupby(['summonerName', 'championName']).mean()
-player_stats_df_count = player_stats_df.groupby(['summonerName', 'championName']).size()
-player_stats_df_summary = player_stats_df_summary.join(pd.DataFrame(player_stats_df_count, columns = ['count']))
-player_stats_df_summary.reset_index(level = 0, inplace=True)
+player_stats_df_summary = player_stats_df.groupby(['summonerName', 'championName', 'teamPosition']).mean()
+player_stats_df_summary = player_stats_df_summary.reset_index(level='teamPosition')
+player_stats_df_summary['teamPosition'].replace('', np.nan, inplace=True)
+player_stats_df_summary.dropna(subset=['teamPosition'], inplace=True)
+player_stats_df_summary.reset_index(level = 'summonerName', inplace=True)
 
 # Combine player stat and champion base stat
 player_combined = player_stats_df_summary.join(champ_stats_df)
@@ -156,34 +158,37 @@ if analysis_type == 'y':
             else:
                 break
         champion_selection.append(champion_selection_input)
+
+    while True:
+        print(', '.join(champion_selection))
+        champion_fix = input('Would you like to fix any champions? (Y/N) ')
+        if champion_fix.lower() == 'y':
+            champion_num = int(input('Please enter the position of the champion (1-5): '))-1
+            new_champ = input('Please enter the name of the new champion: ')
+            champion_selection[champion_num] = new_champ
+            continue
+        elif champion_fix.lower() == 'n':
+            break
 elif analysis_type == 'n':
     champion_selection = [champ_keys[champId].lower() for champId in curr_champIds]
 
-while True:
-    print(', '.join(champion_selection))
-    champion_fix = input('Would you like to fix any champions? (Y/N) ')
-    if champion_fix.lower() == 'y':
-        champion_num = int(input('Please enter the position of the champion (1-5): '))-1
-        new_champ = input('Please enter the name of the new champion: ')
-        champion_selection[champion_num] = new_champ
-        continue
-    elif champion_fix.lower() == 'n':
-        break
+print('TOP / JUNGLE / MIDDLE / BOTTOM / UTILIY')
+summoner_names = {value:input('Position for ' + value + '? ').upper() for key, value in summoner_ids.items()}
 
 current_team = pd.DataFrame(
-    {'summonerName': [value for key, value in summoner_ids.items()], 'championName':champion_selection}
+    {'summonerName': [key for key, value in summoner_names.items()], 'championName':champion_selection, 'teamPosition': [value for key, value in summoner_names.items()]}
 )
-current_team_stats = pd.merge(current_team, player_combined, 'left', on = ['summonerName', 'championName']).fillna(0)
-current_team_stats.drop(current_team_stats.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
+current_team_stats = pd.merge(current_team, player_combined, 'left', on = ['summonerName', 'championName', 'teamPosition']).fillna(0)
+current_team_stats.drop(current_team_stats.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|teamId|teamEarly|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
 
 current_team_stats['kda'] = round((current_team_stats['kills'] + current_team_stats['deaths']) / current_team_stats['deaths'], 2)
 
-print(current_team_stats[['summonerName', 'championName', 'kda']])
+print(current_team_stats[['summonerName', 'championName', 'teamPosition', 'kda']])
 
-current_team_out = current_team_stats.drop(columns=['summonerName', 'championName', 'win', 'count', 'kda']).stack()
-current_team_out.index = current_team_out.index.map('{0[1]}_{0[0]}'.format)
-current_team_out = current_team_out.to_frame().T
-current_team_out = current_team_out.reindex(sorted(current_team_out.columns), axis=1)
+current_team_out = current_team_stats.drop(columns=['summonerName', 'championName', 'win', 'kda'])
+current_team_out['i'] = 0
+current_team_out = current_team_out.pivot(index = 'i', columns = 'teamPosition').select_dtypes(include=[np.number, 'bool'])
+current_team_out.columns = ["_".join(map(str,a)) for a in current_team_out.columns.to_flat_index()]
 
 import xgboost as xgb
 import joblib

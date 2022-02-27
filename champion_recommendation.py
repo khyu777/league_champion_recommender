@@ -6,6 +6,7 @@ from constants import ACCESS_TOKEN
 import os
 import glob
 import sys
+import numpy as np
 
 # define region / set up lolwatcher
 lol_watcher = LolWatcher(ACCESS_TOKEN)
@@ -60,7 +61,6 @@ elif self_other == 'o':
             break
     team_choice = input('Ally/Enemy team? (A/E) ')
     teamIds = [100, 200]
-    summoner_names = [summoner['summonerName'] for summoner in summoners]
     curr_teamIds = {summoner['summonerName']:summoner['teamId'] for summoner in summoners}
     if my_summoner_name not in curr_teamIds:
         my_summoner_name = input('summonerName is not correct. please check capitalization and reenter: ')
@@ -123,17 +123,18 @@ for id, name in tqdm(summoner_ids.items(), bar_format='{l_bar}{bar:20}{r_bar}{ba
             else:
                 break
         for player in match_info['info']['participants']:
-            if player['puuid'] == id:
+            if player['puuid'] == id and match_info['info']['gameType'] == 'MATCHED_GAME':
                 player['summonerName'] = name
                 player_stats.append(player)
 
 player_stats_df = pd.DataFrame(player_stats).drop(columns=['championId', 'challenges'])
 player_stats_df['championName'] = player_stats_df['championName'].str.lower()
 
-player_stats_df_summary = player_stats_df.groupby(['summonerName', 'championName']).mean()
-player_stats_df_count = player_stats_df.groupby(['summonerName', 'championName']).size()
-player_stats_df_summary = player_stats_df_summary.join(pd.DataFrame(player_stats_df_count, columns = ['count']))
-player_stats_df_summary.reset_index(level = 0, inplace=True)
+player_stats_df_summary = player_stats_df.groupby(['summonerName', 'championName', 'teamPosition']).mean()
+player_stats_df_summary = player_stats_df_summary.reset_index(level='teamPosition')
+player_stats_df_summary['teamPosition'].replace('', np.nan, inplace=True)
+player_stats_df_summary.dropna(subset=['teamPosition'], inplace=True)
+player_stats_df_summary.reset_index(level = 'summonerName', inplace=True)
 
 # Combine player stat and champion base stat
 player_combined = player_stats_df_summary.join(champ_stats_df)
@@ -148,6 +149,8 @@ while True:
     else:
         break
 
+print('TOP / JUNGLE / MIDDLE / BOTTOM / UTILIY')
+summoner_names = {value:input('Position for ' + value + '? ').upper() for key, value in summoner_ids.items()}
 champions = pd.DataFrame({'championName':champ_stats_df.index.str.lower()})
 if manual_auto == 'm':
     champion_selection = []
@@ -175,25 +178,24 @@ if manual_auto == 'm':
 
     # stats for all champs for my summoner
     my_summoner_stats_all = pd.merge(champions, player_combined[player_combined['summonerName']==my_summoner_name], 'left', on = 'championName')
-    my_summoner_stats_all = my_summoner_stats_all.drop(columns=['win', 'count', 'summonerName']).add_suffix('_4').rename(columns={'championName_4':'championName'})
+    my_summoner_stats_all = my_summoner_stats_all.drop(columns=['win', 'summonerName']).add_suffix('_' + summoner_names[my_summoner_name]).rename(columns={'championName_BOTTOM':'championName'})
 
     # data for current team
     current_team = pd.DataFrame(
-        {'summonerName': [value for key, value in summoner_ids.items() if value != my_summoner_name], 'championName':champion_selection}
+        {'summonerName': [key for key, value in summoner_names.items() if key != my_summoner_name], 'championName':champion_selection, 'teamPosition': [value for key, value in summoner_names.items() if key != my_summoner_name]}
     )
-    current_team_stats = pd.merge(current_team, player_combined, 'left', on = ['summonerName', 'championName']).fillna(0)
+    current_team_stats = pd.merge(current_team, player_combined, 'left', on = ['summonerName', 'championName', 'teamPosition']).fillna(0)
 
     current_team_stats['kda'] = round((current_team_stats['kills'] + current_team_stats['deaths']) / current_team_stats['deaths'], 2)
 
     print(current_team_stats[['summonerName', 'championName', 'kda']])
 
-    current_team_out = current_team_stats.drop(columns=['summonerName', 'championName', 'win', 'count', 'kda']).stack()
-    current_team_out.index = current_team_out.index.map('{0[1]}_{0[0]}'.format)
-    current_team_out = current_team_out.to_frame().T
-    #current_team_out_repeat = pd.concat([current_team_out]*len(champions['championName']), ignore_index=True)
+    current_team_out = current_team_stats.drop(columns=['summonerName', 'championName', 'win', 'kda'])
+    current_team_out['i'] = 0
+    current_team_out = current_team_out.pivot(index = 'i', columns = 'teamPosition').select_dtypes(include=[np.number, 'bool'])
+    current_team_out.columns = ["_".join(map(str,a)) for a in current_team_out.columns.to_flat_index()]
 
     # create dataset with all champions for my summoner + other 4 summoners
-    #all_summoners = pd.concat([current_team_out_repeat, my_summoner_stats_all], axis=1).fillna(0)
     all_summoners = current_team_out.merge(my_summoner_stats_all, how = 'cross').fillna(0)
     all_summoners = all_summoners.reindex(sorted(all_summoners.columns), axis=1)
 
@@ -201,21 +203,19 @@ if manual_auto == 'm':
 
 elif manual_auto == 'a':
     # all combinations
-    def get_stats(num, summoner):
+    def get_stats(summoner):
         my_summoner_stats_all = pd.merge(champions, player_combined[player_combined['summonerName']==summoner], 'left', on = 'championName')
-        my_summoner_stats_all = my_summoner_stats_all.drop(columns=['win', 'count', 'summonerName']).add_suffix(num)
+        my_summoner_stats_all = my_summoner_stats_all.drop(columns=['win', 'summonerName']).add_suffix('_' + summoner_names[summoner])
         return(my_summoner_stats_all.dropna(thresh=2))
 
-    summoner_names = [value for key, value in summoner_ids.items()]
-
-    summoner_0 = get_stats('_0', summoner_names[0])
-    summoner_1 = get_stats('_1', summoner_names[1])
-    summoner_2 = get_stats('_2', summoner_names[2])
-    summoner_3 = get_stats('_3', summoner_names[3])
-    summoner_4 = get_stats('_4', summoner_names[4])
+    summoner_0 = get_stats(list(summoner_names)[0])
+    summoner_1 = get_stats(list(summoner_names)[1])
+    summoner_2 = get_stats(list(summoner_names)[2])
+    summoner_3 = get_stats(list(summoner_names)[3])
+    summoner_4 = get_stats(list(summoner_names)[4])
 
     summoner_all_comb = summoner_0.merge(summoner_1, how='cross').merge(summoner_2, how='cross').merge(summoner_3, how='cross').merge(summoner_4, how='cross')
-    summoner_all_comb['championNames'] = summoner_all_comb['championName_0'].str.title() + ' / ' + summoner_all_comb['championName_1'].str.title() + ' / ' + summoner_all_comb['championName_2'].str.title() + ' / ' + summoner_all_comb['championName_3'].str.title() + ' / ' + summoner_all_comb['championName_4'].str.title()
+    summoner_all_comb['championNames'] = summoner_all_comb['championName_TOP'].str.title() + ' / ' + summoner_all_comb['championName_JUNGLE'].str.title() + ' / ' + summoner_all_comb['championName_MIDDLE'].str.title() + ' / ' + summoner_all_comb['championName_BOTTOM'].str.title() + ' / ' + summoner_all_comb['championName_UTILITY'].str.title()
     summoner_all_comb.drop(summoner_all_comb.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
     summoner_all_comb = summoner_all_comb.reindex(sorted(summoner_all_comb.columns), axis=1)
     summoner_all_comb['count'] = [len(x.split(' / ')) for x in summoner_all_comb['championNames'].tolist()]
@@ -273,17 +273,14 @@ elif manual_auto == 'a':
     xgb_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in xgb_prob_auto]}).sort_values('win_prob', ascending=False)
     print(xgb_champion_auto.head())
 
-    auto_prob = summoner_all_comb.loc[:,['championName_0', 'championName_1', 'championName_2', 'championName_3', 'championName_4', 'championNames']]
+    auto_prob = summoner_all_comb.loc[:,['championName_TOP', 'championName_JUNGLE', 'championName_MIDDLE', 'championName_BOTTOM', 'championName_UTILITY', 'championNames']]
     auto_prob['win_prob_rfc'] = pd.Series([x[0] for x in rfc_prob_auto])
     auto_prob['win_prob_xgb'] = pd.Series([x[0] for x in xgb_prob_auto])
-
-    my_summoner_index = str(summoner_names.index(my_summoner_name))
-    auto_prob['win_prob_rfc_avg'] = df = auto_prob.groupby('championName_' + my_summoner_index)['win_prob_rfc'].transform('mean')
-    auto_prob['win_prob_xgb_avg'] = df = auto_prob.groupby('championName_' + my_summoner_index)['win_prob_xgb'].transform('mean')
+    
+    auto_prob['win_prob_rfc_avg'] = df = auto_prob.groupby('championName_' + summoner_names[my_summoner_name])['win_prob_rfc'].transform('mean')
+    auto_prob['win_prob_xgb_avg'] = df = auto_prob.groupby('championName_' + summoner_names[my_summoner_name])['win_prob_xgb'].transform('mean')
     auto_prob['win_prob_overall_avg'] = auto_prob[['win_prob_rfc_avg', 'win_prob_xgb_avg']].mean(axis=1)
 
     print('Combined')
-    print(my_summoner_name + ': champion_' + str(int(my_summoner_index)+1))
+    print(my_summoner_name + ': champion_' + str(list(summoner_names).index(my_summoner_name)+1))
     print(auto_prob[['championNames', 'win_prob_rfc_avg', 'win_prob_xgb_avg', 'win_prob_overall_avg']].sort_values('win_prob_overall_avg', ascending=False).head())
-
-input('Press any key to close')

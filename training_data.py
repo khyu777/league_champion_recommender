@@ -50,8 +50,9 @@ for summoner_id in tqdm(summoner_list, bar_format='{l_bar}{bar:20}{r_bar}{bar:-2
         if err.response.status_code == 429:
             print('waiting...')
             time.sleep(60)
-        elif err.response.status_code == 404:
-            print('Summoner with that ridiculous name not found.')
+        elif err.response.status_code == 403:
+            print('Invalid path or invalid API')
+            ACCESS_TOKEN = input('Enter new API token if expired: ')
         else:
             raise
 
@@ -76,6 +77,9 @@ for puuid in tqdm(summoner_list_puuid, bar_format='{l_bar}{bar:20}{r_bar}{bar:-2
             if err.response.status_code == 429:
                 print('Waiting...')
                 time.sleep(120)
+            elif err.response.status_code == 403:
+                print('Invalid path or invalid API')
+                ACCESS_TOKEN = input('Enter new API token if expired: ')
         else:
             break
     for match in matches_by_puuid:
@@ -112,9 +116,8 @@ for match in tqdm(matches, bar_format='{l_bar}{bar:20}{r_bar}{bar:-20b}'):
         df = pd.DataFrame(match_participants)
         df['championName'] = df['championName'].str.lower()
         df = pd.merge(df, champ_stats_df.reset_index().rename(columns = {'index':'championName'}), 'left', on = 'championName')
-        df.drop(df.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
-        df['n'] = df.groupby('win').cumcount()
-        df = df.pivot(index = 'win', columns = 'n').reset_index().select_dtypes(include=[np.number, 'bool'])
+        df.drop(df.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|teamId|teamEarly|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
+        df = df.pivot(index = 'win', columns = 'teamPosition').reset_index().select_dtypes(include=[np.number, 'bool'])
         matches_info.append(df)
 
 ## convert to dataframe
