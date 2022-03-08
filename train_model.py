@@ -10,7 +10,9 @@ import joblib
 
 # Import training dataset
 path = os.getcwd() + '\\dataset'
-filenames = [i for i in glob.glob(os.path.join(path, '*.csv'))]
+tier = input('Tier? ').lower()
+tier = '_'.join(tier.split(sep=', '))
+filenames = [i for i in glob.glob(os.path.join(path, '*' + tier + '*.csv'))]
 training_dataset = pd.concat([pd.read_csv(f) for f in filenames])
 
 ## split into train/test
@@ -24,12 +26,6 @@ scaler = preprocessing.StandardScaler()
 x_train_scaled = scaler.fit_transform(x_train)
 x_test_scaled = scaler.transform(x_test)
 
-logit = LogisticRegression(max_iter=50000)
-logit.fit(x_train_scaled, y_train)
-
-print(f'Logit Score (Train): {round(logit.score(x_train_scaled, y_train), 4)}')
-print(f'Logit Score (Test): {round(logit.score(x_test_scaled, y_test), 4)}')
-
 rfc = RandomForestClassifier()
 rfc.fit(x_train_scaled, y_train)
 
@@ -42,7 +38,6 @@ xgboost.fit(x_train_scaled, y_train)
 print(f'XGB Score (Train): {round(xgboost.score(x_train_scaled, y_train), 4)}')
 print(f'XGB Score (Test): {round(xgboost.score(x_test_scaled, y_test), 4)}')
 
-joblib.dump(scaler, 'trained_models/scaler.joblib')
-joblib.dump(logit, 'trained_models/logit.joblib')
-joblib.dump(rfc, 'trained_models/rfc.joblib')
-xgboost.save_model('trained_models/xgb.json')
+joblib.dump(scaler, 'trained_models/scaler_' + tier + '.joblib')
+joblib.dump(rfc, 'trained_models/rfc_' + tier + '.joblib')
+xgboost.save_model('trained_models/xgb_' + tier + '.json')
