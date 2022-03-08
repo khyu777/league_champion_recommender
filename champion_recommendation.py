@@ -3,10 +3,9 @@ import pandas as pd
 import time
 from tqdm import tqdm
 from constants import ACCESS_TOKEN
-import os
-import glob
 import sys
 import numpy as np
+from scipy.stats.mstats import gmean
 
 # define region / set up lolwatcher
 lol_watcher = LolWatcher(ACCESS_TOKEN)
@@ -130,14 +129,16 @@ for id, name in tqdm(summoner_ids.items(), bar_format='{l_bar}{bar:20}{r_bar}{ba
 player_stats_df = pd.DataFrame(player_stats).drop(columns=['championId', 'challenges'])
 player_stats_df['championName'] = player_stats_df['championName'].str.lower()
 
-player_stats_df_summary = player_stats_df.groupby(['summonerName', 'championName', 'teamPosition']).mean()
+columns = ['assists', 'baronKills', 'bountyLevel', 'champExperience', 'champLevel', 'damageDealtToBuildings', 'damageDealtToObjectives', 'damageDealtToTurrets', 'deaths', 'doubleKills', 'dragonKills', 'firstTowerAssist', 'firstTowerKill', 'goldEarned', 'goldSpent', 'inhibitorKills', 'inhibitorTakedowns', 'inhibitorsLost', 'killingSprees', 'kills', 'largestKillingSpree', 'largestMultiKill', 'longestTimeSpentLiving', 'magicDamageDealt', 'magicDamageDealtToChampions', 'magicDamageTaken', 'neutralMinionsKilled', 'physicalDamageDealt', 'physicalDamageDealtToChampions', 'quadraKills', 'sightWardsBoughtInGame', 'totalDamageDealt', 'totalDamageDealtToChampions', 'totalDamageTaken', 'totalHeal', 'totalTimeSpentDead', 'tripleKills', 'turretKills', 'turretTakedowns', 'turretsLost', 'unrealKills', 'visionScore']
+
+player_stats_df_summary = player_stats_df.groupby(['summonerName', 'championName', 'teamPosition'])[columns].mean()
 player_stats_df_summary = player_stats_df_summary.reset_index(level='teamPosition')
 player_stats_df_summary['teamPosition'].replace('', np.nan, inplace=True)
 player_stats_df_summary.dropna(subset=['teamPosition'], inplace=True)
 player_stats_df_summary.reset_index(level = 'summonerName', inplace=True)
 
 # Combine player stat and champion base stat
-player_combined = player_stats_df_summary.join(champ_stats_df)
+player_combined = player_stats_df_summary.join(champ_stats_df[['crit', 'critperlevel']])
 player_combined = player_combined.reset_index().rename(columns={'index':'championName'})
 print(player_combined.summonerName.unique())
 
@@ -149,9 +150,40 @@ while True:
     else:
         break
 
-print('TOP / JUNGLE / MIDDLE / BOTTOM / UTILIY')
-summoner_names = {value:input('Position for ' + value + '? ').upper() for key, value in summoner_ids.items()}
+positions = ['TOP', 'JUNGLE', 'MIDDLE', 'BOTTOM', 'UTILITY']
+summoner_names = {}
+for key, value in summoner_ids.items():
+    while True:
+        position = input('Position for ' + value + '? ').lower()
+        if position == 'top':
+            position = 'TOP'
+        elif position == 'jg':
+            position = 'JUNGLE'
+        elif position == 'mid':
+            position = 'MIDDLE'
+        elif position == 'ad':
+            position = 'BOTTOM'
+        elif position == 'sup':
+            position = 'UTILITY'
+        if position not in positions:
+            print('Wrong position name. Please enter again')
+            continue
+        else:
+            break
+    summoner_names[value] = position
+
 champions = pd.DataFrame({'championName':champ_stats_df.index.str.lower()})
+def get_stats(summoner, manual):
+    summoner_position = summoner_names[summoner]
+    my_summoner_stats_all = pd.merge(champions, player_combined[player_combined['summonerName']==summoner], 'left', on = 'championName')
+    my_summoner_stats_all = my_summoner_stats_all.drop(columns=['summonerName', 'teamPosition']).add_suffix('_' + summoner_position)
+    if manual:
+        return my_summoner_stats_all
+    else:
+        return my_summoner_stats_all.dropna(thresh=2)
+        
+summoner_list = [summoner for summoner in summoner_names]
+print(' / '.join(list(summoner_names)))
 if manual_auto == 'm':
     champion_selection = []
     for summoner in summoner_ids.values():
@@ -177,8 +209,7 @@ if manual_auto == 'm':
             break
 
     # stats for all champs for my summoner
-    my_summoner_stats_all = pd.merge(champions, player_combined[player_combined['summonerName']==my_summoner_name], 'left', on = 'championName')
-    my_summoner_stats_all = my_summoner_stats_all.drop(columns=['win', 'summonerName']).add_suffix('_' + summoner_names[my_summoner_name]).rename(columns={'championName_BOTTOM':'championName'})
+    my_summoner_stats_all = get_stats(my_summoner_name, True).rename(columns={'championName_'+summoner_names[my_summoner_name]:'championName'})
 
     # data for current team
     current_team = pd.DataFrame(
@@ -190,7 +221,7 @@ if manual_auto == 'm':
 
     print(current_team_stats[['summonerName', 'championName', 'kda']])
 
-    current_team_out = current_team_stats.drop(columns=['summonerName', 'championName', 'win', 'kda'])
+    current_team_out = current_team_stats.drop(columns=['summonerName', 'championName', 'kda'])
     current_team_out['i'] = 0
     current_team_out = current_team_out.pivot(index = 'i', columns = 'teamPosition').select_dtypes(include=[np.number, 'bool'])
     current_team_out.columns = ["_".join(map(str,a)) for a in current_team_out.columns.to_flat_index()]
@@ -199,24 +230,16 @@ if manual_auto == 'm':
     all_summoners = current_team_out.merge(my_summoner_stats_all, how = 'cross').fillna(0)
     all_summoners = all_summoners.reindex(sorted(all_summoners.columns), axis=1)
 
-    all_summoners.drop(all_summoners.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
-
 elif manual_auto == 'a':
     # all combinations
-    def get_stats(summoner):
-        my_summoner_stats_all = pd.merge(champions, player_combined[player_combined['summonerName']==summoner], 'left', on = 'championName')
-        my_summoner_stats_all = my_summoner_stats_all.drop(columns=['win', 'summonerName']).add_suffix('_' + summoner_names[summoner])
-        return(my_summoner_stats_all.dropna(thresh=2))
-
-    summoner_0 = get_stats(list(summoner_names)[0])
-    summoner_1 = get_stats(list(summoner_names)[1])
-    summoner_2 = get_stats(list(summoner_names)[2])
-    summoner_3 = get_stats(list(summoner_names)[3])
-    summoner_4 = get_stats(list(summoner_names)[4])
+    summoner_0 = get_stats(list(summoner_names)[0], False)
+    summoner_1 = get_stats(list(summoner_names)[1], False)
+    summoner_2 = get_stats(list(summoner_names)[2], False)
+    summoner_3 = get_stats(list(summoner_names)[3], False)
+    summoner_4 = get_stats(list(summoner_names)[4], False)
 
     summoner_all_comb = summoner_0.merge(summoner_1, how='cross').merge(summoner_2, how='cross').merge(summoner_3, how='cross').merge(summoner_4, how='cross')
-    summoner_all_comb['championNames'] = summoner_all_comb['championName_TOP'].str.title() + ' / ' + summoner_all_comb['championName_JUNGLE'].str.title() + ' / ' + summoner_all_comb['championName_MIDDLE'].str.title() + ' / ' + summoner_all_comb['championName_BOTTOM'].str.title() + ' / ' + summoner_all_comb['championName_UTILITY'].str.title()
-    summoner_all_comb.drop(summoner_all_comb.filter(regex='^armor|^attack|championTransform|consumablesPurchased|damageSelfMitigated|detectorWardsPlaced|^firstBlood|gameEnded|^hp|^item|largestCriticalStrike|movespeed|^mp|^nexus|^objective|participantId|pentaKills|physicalDamageTaken|profileIcon|^spell|^summoner[1-2]|summonerLevel|summonerId|^team|^time|totalDamageShielded|totalHealsOnTeammates|totalMinionsKilled|totalTimeCC|totalUnitsHealed|^trueDamage|visionWards|^wards').columns, axis=1, inplace=True)
+    summoner_all_comb['championNames'] = summoner_all_comb['championName_'+summoner_names[summoner_list[0]]].str.title() + ' / ' + summoner_all_comb['championName_'+summoner_names[summoner_list[1]]].str.title() + ' / ' + summoner_all_comb['championName_'+summoner_names[summoner_list[2]]].str.title() + ' / ' + summoner_all_comb['championName_'+summoner_names[summoner_list[3]]].str.title() + ' / ' + summoner_all_comb['championName_'+summoner_names[summoner_list[4]]].str.title()
     summoner_all_comb = summoner_all_comb.reindex(sorted(summoner_all_comb.columns), axis=1)
     summoner_all_comb['count'] = [len(x.split(' / ')) for x in summoner_all_comb['championNames'].tolist()]
     summoner_all_comb['distinct_count'] = [len(set(x.split(' / '))) for x in summoner_all_comb['championNames'].tolist()]
@@ -225,13 +248,16 @@ elif manual_auto == 'a':
 import xgboost as xgb
 import joblib
 
-scaler = joblib.load('trained_models/scaler.joblib')
-rfc = joblib.load('trained_models/rfc.joblib')
+tier = input('Tier? ').lower()
+tier = '_'.join(tier.split(sep=', '))
+scaler = joblib.load('trained_models/scaler_' + tier + '.joblib')
+rfc = joblib.load('trained_models/rfc_' + tier + '.joblib')
 
 xgboost = xgb.XGBClassifier()
-xgboost.load_model('trained_models/xgb.json')
+xgboost.load_model('trained_models/xgb_' + tier + '.json')
 
 # Test dataset
+print(summoner_names)
 if manual_auto == 'm':
     x_curr = all_summoners.drop(columns=['championName'])
     x_curr_scaled = scaler.transform(x_curr)
@@ -263,24 +289,28 @@ elif manual_auto == 'a':
     print('Random Forest')
     rfc_result_auto = rfc.predict(x_curr_auto_scaled)
     rfc_prob_auto = rfc.predict_proba(x_curr_auto_scaled)
-    rfc_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in rfc_prob_auto]}).sort_values('win_prob', ascending=False)
-    print(rfc_champion_auto.head())
+    rfc_champion_auto = summoner_all_comb.loc[:, ['championName_TOP', 'championName_JUNGLE', 'championName_MIDDLE', 'championName_BOTTOM', 'championName_UTILITY']]
+    rfc_champion_auto.loc[:, 'win_prob'] = [round(prob[1]*100, 2) for prob in rfc_prob_auto]
+    rfc_champion_auto = rfc_champion_auto.sort_values('win_prob', ascending = False)
+    print(rfc_champion_auto.head(10))
 
     ## XGBoost
     print('XGBoost')
     xgb_result_auto = xgboost.predict(x_curr_auto_scaled)
     xgb_prob_auto = xgboost.predict_proba(x_curr_auto_scaled)
-    xgb_champion_auto = pd.DataFrame({'championName':summoner_all_comb['championNames'], 'win_prob':[round(prob[1]*100, 2) for prob in xgb_prob_auto]}).sort_values('win_prob', ascending=False)
-    print(xgb_champion_auto.head())
+    xgb_champion_auto = summoner_all_comb.loc[:, ['championName_TOP', 'championName_JUNGLE', 'championName_MIDDLE', 'championName_BOTTOM', 'championName_UTILITY']]
+    xgb_champion_auto.loc[:, 'win_prob'] = [round(prob[1]*100, 2) for prob in xgb_prob_auto]
+    xgb_champion_auto = xgb_champion_auto.sort_values('win_prob', ascending = False)
+    print(xgb_champion_auto.head(10))
 
-    auto_prob = summoner_all_comb.loc[:,['championName_TOP', 'championName_JUNGLE', 'championName_MIDDLE', 'championName_BOTTOM', 'championName_UTILITY', 'championNames']]
-    auto_prob['win_prob_rfc'] = pd.Series([x[0] for x in rfc_prob_auto])
-    auto_prob['win_prob_xgb'] = pd.Series([x[0] for x in xgb_prob_auto])
+    #auto_prob = summoner_all_comb.loc[:,['championName_TOP', 'championName_JUNGLE', 'championName_MIDDLE', 'championName_BOTTOM', 'championName_UTILITY', 'championNames']]
+    #auto_prob['win_prob_rfc'] = pd.Series([x[0] for x in rfc_prob_auto])
+    #auto_prob['win_prob_xgb'] = pd.Series([x[0] for x in xgb_prob_auto])
     
-    auto_prob['win_prob_rfc_avg'] = df = auto_prob.groupby('championName_' + summoner_names[my_summoner_name])['win_prob_rfc'].transform('mean')
-    auto_prob['win_prob_xgb_avg'] = df = auto_prob.groupby('championName_' + summoner_names[my_summoner_name])['win_prob_xgb'].transform('mean')
-    auto_prob['win_prob_overall_avg'] = auto_prob[['win_prob_rfc_avg', 'win_prob_xgb_avg']].mean(axis=1)
+    #auto_prob['win_prob_rfc_avg'] = df = auto_prob.groupby('championName_' + summoner_names[my_summoner_name])['win_prob_rfc'].transform('mean')
+    #auto_prob['win_prob_xgb_avg'] = df = auto_prob.groupby('championName_' + summoner_names[my_summoner_name])['win_prob_xgb'].transform('mean')
+    #auto_prob['win_prob_overall_avg'] = auto_prob[['win_prob_rfc_avg', 'win_prob_xgb_avg']].mean(axis=1)
 
-    print('Combined')
-    print(my_summoner_name + ': champion_' + str(list(summoner_names).index(my_summoner_name)+1))
-    print(auto_prob[['championNames', 'win_prob_rfc_avg', 'win_prob_xgb_avg', 'win_prob_overall_avg']].sort_values('win_prob_overall_avg', ascending=False).head())
+    #print('Combined')
+    #print(my_summoner_name + ': champion_' + str(list(summoner_names).index(my_summoner_name)+1))
+    #print(auto_prob[['championNames', 'win_prob_rfc_avg', 'win_prob_xgb_avg', 'win_prob_overall_avg']].sort_values('win_prob_overall_avg', ascending=False).head())
